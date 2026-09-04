@@ -21,6 +21,7 @@ from .council import (
     stage2_collect_rankings,
     stage3_synthesize_final,
     calculate_aggregate_rankings,
+    build_label_to_role,
     get_knowledge_context,
     get_knowledge_sources,
 )
@@ -313,6 +314,10 @@ async def send_message_stream(
                 )
             )
 
+            label_to_role = build_label_to_role(
+                stage1_results
+            )
+
             aggregate_rankings = (
                 calculate_aggregate_rankings(
                     stage2_results,
@@ -322,6 +327,7 @@ async def send_message_stream(
 
             metadata = {
                 "label_to_model": label_to_model,
+                "label_to_role": label_to_role,
                 "aggregate_rankings": aggregate_rankings,
                 "knowledge": knowledge_metadata,
                 "conversation_context": (

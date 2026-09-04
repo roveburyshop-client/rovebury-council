@@ -188,19 +188,43 @@ async def stage1_collect_responses(
     return stage1_results
 
 
+def build_label_to_role(
+    stage1_results: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, str]]:
+    """Map anonymized Stage 2 labels to specialist role metadata."""
+    labels = [
+        chr(65 + i)
+        for i in range(len(stage1_results))
+    ]
+
+    return {
+        f"Response {label}": {
+            "role_id": str(
+                result.get("role_id")
+                or "generalist"
+            ),
+            "role_name": str(
+                result.get("role_name")
+                or "Council Generalist"
+            ),
+        }
+        for label, result in zip(
+            labels,
+            stage1_results,
+        )
+    }
+
+
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]]
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
-    Stage 2: Each model ranks the anonymized responses.
+    Stage 2: critical peer review of anonymized specialist responses.
 
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
-
-    Returns:
-        Tuple of (rankings list, label_to_model mapping)
+    Specialist lenses are visible to reviewers, while model identities remain
+    hidden from the peer-review prompt. The return shape intentionally remains
+    backward compatible: (rankings list, label_to_model mapping).
     """
     labels = [
         chr(65 + i)
@@ -209,71 +233,113 @@ async def stage2_collect_rankings(
 
     label_to_model = {
         f"Response {label}": result["model"]
-        for label, result in zip(labels, stage1_results)
+        for label, result in zip(
+            labels,
+            stage1_results,
+        )
     }
 
-    responses_text = "\n\n".join(
-        [
-            f"Response {label}:\n{result['response']}"
-            for label, result in zip(labels, stage1_results)
-        ]
+    label_to_role = build_label_to_role(
+        stage1_results
     )
 
-    ranking_prompt = f"""You are evaluating different responses to the following question:
+    response_blocks = []
 
-Question: {user_query}
+    for label, result in zip(
+        labels,
+        stage1_results,
+    ):
+        response_label = f"Response {label}"
+        role = label_to_role[response_label]
 
-Here are the responses from different models (anonymized):
+        response_blocks.append(
+            (
+                f"{response_label}\n"
+                f"Specialist lens: {role['role_name']}\n"
+                "Response:\n"
+                f"{result['response']}"
+            )
+        )
+
+    responses_text = "\n\n".join(
+        response_blocks
+    )
+
+    ranking_prompt = f"""You are performing Critical Peer Review for the ROVEBURY Council.
+
+Question:
+{user_query}
+
+The responses below are anonymized by model identity. Each response includes
+the specialist lens assigned to that Council seat.
 
 {responses_text}
 
+CRITICAL PEER REVIEW CONTRACT:
+- Evaluate each response against the user's actual question and the analytical lens assigned to that response.
+- Treat the specialist role as an analytical perspective, not as evidence or authority.
+- Challenge unsupported assumptions, factual overreach, missing evidence, weak reasoning, implementation risks and important trade-offs.
+- Do not treat agreement between responses, specialist confidence or peer consensus as verification.
+- Do not invent sources, statistics, search volumes, rankings, research findings or ROVEBURY facts.
+- When internal ROVEBURY facts are asserted, judge whether the response distinguishes governed internal knowledge from speculation or external evidence.
+- For external or time-sensitive claims, reward explicit uncertainty or the need for current verification when evidence is absent.
+- Preserve material disagreements and trade-offs instead of forcing artificial consensus.
+- Judge usefulness, correctness, evidence discipline and fit to the specialist lens; a specialist response should not rank highly merely because its role sounds relevant.
+- Do not infer or discuss which underlying AI model produced any response.
+
 Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+1. Critically evaluate each response individually. State what it does well, what it does poorly, and any material unsupported claims or trade-offs.
+2. Compare the responses as competing analytical contributions to the Council.
+3. At the very end, provide the final ranking.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Start with the line "FINAL RANKING:" (all caps, with colon)
 - Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- Do not add any other text or explanations in the ranking section
+- Each line must contain ONLY the number, period, space, and response label
+- Do not add explanations or any other text inside the ranking section
 
-Example of the correct format for your ENTIRE response:
+Example:
 
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
+Response A ...
+Response B ...
+Response C ...
 
 FINAL RANKING:
 1. Response C
 2. Response A
 3. Response B
 
-Now provide your evaluation and ranking:"""
+Now provide the critical peer review and final ranking:"""
 
     messages = [
         {
             "role": "user",
-            "content": ranking_prompt
+            "content": ranking_prompt,
         }
     ]
 
     responses = await query_models_parallel(
         COUNCIL_MODELS,
-        messages
+        messages,
     )
 
     stage2_results = []
 
     for model, response in responses.items():
         if response is not None:
-            full_text = response.get("content", "")
-            parsed = parse_ranking_from_text(full_text)
+            full_text = response.get(
+                "content",
+                "",
+            )
+            parsed = parse_ranking_from_text(
+                full_text
+            )
 
             stage2_results.append(
                 {
                     "model": model,
                     "ranking": full_text,
-                    "parsed_ranking": parsed
+                    "parsed_ranking": parsed,
                 }
             )
 
@@ -632,6 +698,10 @@ async def run_full_council(
         )
     )
 
+    label_to_role = build_label_to_role(
+        stage1_results
+    )
+
     aggregate_rankings = (
         calculate_aggregate_rankings(
             stage2_results,
@@ -648,6 +718,7 @@ async def run_full_council(
 
     metadata = {
         "label_to_model": label_to_model,
+        "label_to_role": label_to_role,
         "aggregate_rankings": aggregate_rankings,
         "knowledge": {
             "used": bool(knowledge_context),
