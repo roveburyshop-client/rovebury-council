@@ -11,7 +11,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Council members - list of OpenRouter model identifiers
 COUNCIL_MODELS = [
     "minimax/minimax-m3:free",
-    "z-ai/glm-5.2:free",
+    "openrouter/free",
     "nvidia/nemotron-3-super-120b-a12b:free",
 ]
 
