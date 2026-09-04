@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { getModelDisplayName } from '../modelNames';
 import './Stage1.css';
+
 
 export default function Stage1({ responses }) {
   const [activeTab, setActiveTab] = useState(0);
@@ -9,26 +11,38 @@ export default function Stage1({ responses }) {
     return null;
   }
 
+  const activeResponse = responses[activeTab];
+
   return (
     <div className="stage stage1">
-      <h3 className="stage-title">Stage 1: Individual Responses</h3>
+      <h3 className="stage-title">
+        Stage 1: Individual Responses
+      </h3>
 
       <div className="tabs">
-        {responses.map((resp, index) => (
+        {responses.map((response, index) => (
           <button
-            key={index}
-            className={`tab ${activeTab === index ? 'active' : ''}`}
+            key={response.model || index}
+            type="button"
+            className={`tab ${
+              activeTab === index ? 'active' : ''
+            }`}
             onClick={() => setActiveTab(index)}
           >
-            {resp.model.split('/')[1] || resp.model}
+            {getModelDisplayName(response.model)}
           </button>
         ))}
       </div>
 
       <div className="tab-content">
-        <div className="model-name">{responses[activeTab].model}</div>
+        <div className="model-name">
+          {getModelDisplayName(activeResponse.model)}
+        </div>
+
         <div className="response-text markdown-content">
-          <ReactMarkdown>{responses[activeTab].response}</ReactMarkdown>
+          <ReactMarkdown>
+            {activeResponse.response}
+          </ReactMarkdown>
         </div>
       </div>
     </div>
