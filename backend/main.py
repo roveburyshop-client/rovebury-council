@@ -10,6 +10,10 @@ import json
 import asyncio
 
 from . import storage
+from .conversation_context import (
+    build_contextual_query,
+    build_conversation_context,
+)
 from .council import (
     run_full_council,
     generate_conversation_title,
@@ -154,6 +158,10 @@ async def send_message(
         len(conversation["messages"]) == 0
     )
 
+    conversation_context = build_conversation_context(
+        conversation.get("messages", [])
+    )
+
     storage.add_user_message(
         conversation_id,
         request.content,
@@ -171,7 +179,8 @@ async def send_message(
 
     stage1_results, stage2_results, stage3_result, metadata = (
         await run_full_council(
-            request.content
+            request.content,
+            conversation_context,
         )
     )
 
@@ -222,6 +231,15 @@ async def send_message_stream(
         len(conversation["messages"]) == 0
     )
 
+    conversation_context = build_conversation_context(
+        conversation.get("messages", [])
+    )
+
+    council_query = build_contextual_query(
+        request.content,
+        conversation_context,
+    )
+
     async def event_generator():
         try:
             storage.add_user_message(
@@ -253,6 +271,11 @@ async def send_message_stream(
                 ),
             }
 
+            conversation_context_metadata = {
+                "used": bool(conversation_context),
+                "characters": len(conversation_context),
+            }
+
             # Stage 1
             yield (
                 f"data: {json.dumps({'type': 'stage1_start'})}"
@@ -260,7 +283,7 @@ async def send_message_stream(
             )
 
             stage1_results = await stage1_collect_responses(
-                request.content,
+                council_query,
                 knowledge_context,
             )
 
@@ -283,7 +306,7 @@ async def send_message_stream(
 
             stage2_results, label_to_model = (
                 await stage2_collect_rankings(
-                    request.content,
+                    council_query,
                     stage1_results,
                 )
             )
@@ -299,6 +322,9 @@ async def send_message_stream(
                 "label_to_model": label_to_model,
                 "aggregate_rankings": aggregate_rankings,
                 "knowledge": knowledge_metadata,
+                "conversation_context": (
+                    conversation_context_metadata
+                ),
             }
 
             yield (
@@ -320,7 +346,7 @@ async def send_message_stream(
             )
 
             stage3_result = await stage3_synthesize_final(
-                request.content,
+                council_query,
                 stage1_results,
                 stage2_results,
                 knowledge_context,

@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
 from .knowledge import retrieve_knowledge
+from .conversation_context import build_contextual_query
 
 
 def get_knowledge_context(user_query: str) -> str:
@@ -480,7 +481,8 @@ Title:"""
 
 
 async def run_full_council(
-    user_query: str
+    user_query: str,
+    conversation_context: str = "",
 ) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
@@ -500,8 +502,13 @@ async def run_full_council(
         user_query
     )
 
-    stage1_results = await stage1_collect_responses(
+    council_query = build_contextual_query(
         user_query,
+        conversation_context,
+    )
+
+    stage1_results = await stage1_collect_responses(
+        council_query,
         knowledge_context
     )
 
@@ -525,13 +532,17 @@ async def run_full_council(
                     "characters": len(
                         knowledge_context
                     )
-                }
+                },
+                "conversation_context": {
+                    "used": bool(conversation_context),
+                    "characters": len(conversation_context),
+                },
             }
         )
 
     stage2_results, label_to_model = (
         await stage2_collect_rankings(
-            user_query,
+            council_query,
             stage1_results
         )
     )
@@ -544,7 +555,7 @@ async def run_full_council(
     )
 
     stage3_result = await stage3_synthesize_final(
-        user_query,
+        council_query,
         stage1_results,
         stage2_results,
         knowledge_context
@@ -561,7 +572,11 @@ async def run_full_council(
             "characters": len(
                 knowledge_context
             )
-        }
+        },
+        "conversation_context": {
+            "used": bool(conversation_context),
+            "characters": len(conversation_context),
+        },
     }
 
     return (
