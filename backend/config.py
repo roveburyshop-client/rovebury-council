@@ -15,8 +15,30 @@ COUNCIL_MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
 ]
 
-# Chairman model - synthesizes final response
+# Chairman model - preferred synthesizer
 CHAIRMAN_MODEL = "minimax/minimax-m3:free"
+
+# Ordered final-synthesis candidates. The preferred Chairman is first,
+# followed by the remaining Council routes with duplicates removed.
+CHAIRMAN_MODELS = list(
+    dict.fromkeys(
+        [
+            CHAIRMAN_MODEL,
+            *COUNCIL_MODELS,
+        ]
+    )
+)
+
+# Conversation titles are low-stakes, so use a lighter fallback chain.
+# generate_conversation_title() makes only one attempt per candidate.
+TITLE_MODELS = list(
+    dict.fromkeys(
+        [
+            CHAIRMAN_MODEL,
+            "openrouter/free",
+        ]
+    )
+)
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

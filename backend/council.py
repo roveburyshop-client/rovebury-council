@@ -2,8 +2,16 @@
 
 from typing import List, Dict, Any, Tuple, Optional
 
-from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .openrouter import (
+    query_models_parallel,
+    query_model_with_fallback,
+)
+from .config import (
+    COUNCIL_MODELS,
+    CHAIRMAN_MODEL,
+    CHAIRMAN_MODELS,
+    TITLE_MODELS,
+)
 from .knowledge import retrieve_knowledge
 from .conversation_context import build_contextual_query
 
@@ -306,20 +314,40 @@ Provide the final answer:"""
         }
     ]
 
-    response = await query_model(
-        CHAIRMAN_MODEL,
-        messages
+    response = await query_model_with_fallback(
+        CHAIRMAN_MODELS,
+        messages,
     )
 
     if response is None:
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "response": "Error: Unable to generate final synthesis.",
+            "primary_model": CHAIRMAN_MODEL,
+            "route_model": None,
+            "fallback_used": False,
         }
 
+    actual_model = (
+        response.get("model")
+        or response.get("route_model")
+        or CHAIRMAN_MODEL
+    )
+
     return {
-        "model": CHAIRMAN_MODEL,
-        "response": response.get("content", "")
+        "model": actual_model,
+        "response": response.get("content", ""),
+        "primary_model": response.get(
+            "primary_model",
+            CHAIRMAN_MODEL,
+        ),
+        "route_model": response.get(
+            "route_model",
+            CHAIRMAN_MODEL,
+        ),
+        "fallback_used": bool(
+            response.get("fallback_used", False)
+        ),
     }
 
 
@@ -458,10 +486,11 @@ Title:"""
         }
     ]
 
-    response = await query_model(
-        "minimax/minimax-m3:free",
+    response = await query_model_with_fallback(
+        TITLE_MODELS,
         messages,
-        timeout=30.0
+        timeout=30.0,
+        max_attempts=1,
     )
 
     if response is None:
