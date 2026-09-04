@@ -18,13 +18,13 @@ from .council import (
     stage3_synthesize_final,
     calculate_aggregate_rankings,
     get_knowledge_context,
+    get_knowledge_sources,
 )
 
 
 app = FastAPI(title="LLM Council API")
 
 
-# Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -180,6 +180,7 @@ async def send_message(
         stage1_results,
         stage2_results,
         stage3_result,
+        metadata,
     )
 
     return {
@@ -203,7 +204,8 @@ async def send_message_stream(
     Relevant ROVEBURY knowledge is retrieved once and then reused
     by Stage 1 and Stage 3.
 
-    Returns Server-Sent Events as each stage completes.
+    The same metadata sent to the frontend is persisted in the
+    conversation history.
     """
 
     conversation = storage.get_conversation(
@@ -236,10 +238,20 @@ async def send_message_stream(
                     )
                 )
 
-            # Retrieve relevant ROVEBURY knowledge exactly once.
+            # Retrieve ROVEBURY knowledge exactly once.
             knowledge_context = get_knowledge_context(
                 request.content
             )
+
+            knowledge_metadata = {
+                "used": bool(knowledge_context),
+                "sources": get_knowledge_sources(
+                    knowledge_context
+                ),
+                "characters": len(
+                    knowledge_context
+                ),
+            }
 
             # Stage 1
             yield (
@@ -283,18 +295,19 @@ async def send_message_stream(
                 )
             )
 
+            metadata = {
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "knowledge": knowledge_metadata,
+            }
+
             yield (
                 "data: "
                 + json.dumps(
                     {
                         "type": "stage2_complete",
                         "data": stage2_results,
-                        "metadata": {
-                            "label_to_model": label_to_model,
-                            "aggregate_rankings": (
-                                aggregate_rankings
-                            ),
-                        },
+                        "metadata": metadata,
                     }
                 )
                 + "\n\n"
@@ -350,6 +363,7 @@ async def send_message_stream(
                 stage1_results,
                 stage2_results,
                 stage3_result,
+                metadata,
             )
 
             yield (
