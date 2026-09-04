@@ -285,6 +285,8 @@ async def send_message_stream(
             stage1_results = await stage1_collect_responses(
                 council_query,
                 knowledge_context,
+                routing_query=request.content,
+                conversation_context=conversation_context,
             )
 
             yield (

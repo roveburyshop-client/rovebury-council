@@ -1,9 +1,11 @@
 """3-stage LLM Council orchestration."""
 
+import asyncio
 from typing import List, Dict, Any, Tuple, Optional
 
 from .openrouter import (
     query_models_parallel,
+    query_model,
     query_model_with_fallback,
 )
 from .config import (
@@ -14,6 +16,10 @@ from .config import (
 )
 from .knowledge import retrieve_knowledge
 from .conversation_context import build_contextual_query
+from .specialists import (
+    build_specialist_instruction,
+    plan_specialist_seats,
+)
 
 
 def get_knowledge_context(user_query: str) -> str:
@@ -89,47 +95,95 @@ USER QUESTION:
 
 async def stage1_collect_responses(
     user_query: str,
-    knowledge_context: Optional[str] = None
+    knowledge_context: Optional[str] = None,
+    *,
+    routing_query: Optional[str] = None,
+    conversation_context: str = "",
 ) -> List[Dict[str, Any]]:
     """
-    Stage 1: Collect individual responses from all council models.
+    Stage 1: collect one response per dynamically selected specialist seat.
+
+    The current raw user query should be supplied as routing_query by Council
+    callers. conversation_context is a secondary routing signal only. The
+    specialist router never receives retrieved ROVEBURY knowledge.
 
     Args:
-        user_query: The user's question
+        user_query: Contextualized Council query used in the model prompts
         knowledge_context: Optional pre-retrieved ROVEBURY knowledge
+        routing_query: Raw current user query for specialist routing
+        conversation_context: Recent transient conversation context
 
     Returns:
-        List of dicts with 'model' and 'response' keys
+        List of dicts with model, seat, role_id, role_name, and response keys
     """
+    raw_routing_query = (
+        routing_query
+        if routing_query is not None
+        else user_query
+    )
+
     if knowledge_context is None:
-        knowledge_context = get_knowledge_context(user_query)
+        knowledge_context = get_knowledge_context(
+            raw_routing_query
+        )
+
+    _routing, assignments = plan_specialist_seats(
+        raw_routing_query,
+        COUNCIL_MODELS,
+        conversation_context,
+    )
 
     augmented_query = build_knowledge_augmented_query(
         user_query,
         knowledge_context
     )
 
-    messages = [
-        {
-            "role": "user",
-            "content": augmented_query
-        }
-    ]
+    tasks = []
 
-    # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    for assignment in assignments:
+        specialist_instruction = build_specialist_instruction(
+            assignment["role_id"]
+        )
 
-    # Format results
+        specialist_query = (
+            specialist_instruction
+            + "\n\nCOUNCIL TASK:\n"
+            + augmented_query
+        )
+
+        messages = [
+            {
+                "role": "user",
+                "content": specialist_query,
+            }
+        ]
+
+        tasks.append(
+            query_model(
+                assignment["model"],
+                messages,
+            )
+        )
+
+    responses = await asyncio.gather(*tasks)
     stage1_results = []
 
-    for model, response in responses.items():
-        if response is not None:
-            stage1_results.append(
-                {
-                    "model": model,
-                    "response": response.get("content", "")
-                }
-            )
+    for assignment, response in zip(
+        assignments,
+        responses,
+    ):
+        if response is None:
+            continue
+
+        stage1_results.append(
+            {
+                "model": assignment["model"],
+                "seat": assignment["seat"],
+                "role_id": assignment["role_id"],
+                "role_name": assignment["role_name"],
+                "response": response.get("content", ""),
+            }
+        )
 
     return stage1_results
 
@@ -538,7 +592,9 @@ async def run_full_council(
 
     stage1_results = await stage1_collect_responses(
         council_query,
-        knowledge_context
+        knowledge_context,
+        routing_query=user_query,
+        conversation_context=conversation_context,
     )
 
     if not stage1_results:
