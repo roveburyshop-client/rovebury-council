@@ -152,6 +152,45 @@ async def main() -> None:
                     for event in events
                     if event.get("type") == "stage2_complete"
                 )
+                stage3_event = next(
+                    event
+                    for event in events
+                    if event.get("type") == "stage3_complete"
+                )
+
+                emitted_stage3 = stage3_event.get("data", {})
+                require(
+                    bool(emitted_stage3.get("response", "").strip()),
+                    "Streaming Stage 3 response is empty.",
+                )
+
+                for key in (
+                    "model",
+                    "primary_model",
+                    "route_model",
+                    "fallback_used",
+                ):
+                    require(
+                        key in emitted_stage3,
+                        f"Streaming Stage 3 is missing routing field: {key}.",
+                    )
+
+                require(
+                    isinstance(emitted_stage3.get("fallback_used"), bool),
+                    "Streaming Stage 3 fallback_used is not boolean.",
+                )
+                require(
+                    bool(emitted_stage3.get("primary_model")),
+                    "Streaming Stage 3 primary_model is empty.",
+                )
+                require(
+                    bool(emitted_stage3.get("route_model")),
+                    "Successful streaming Stage 3 route_model is empty.",
+                )
+
+                print(
+                    "PASS  streaming Stage 3 exposes routing metadata"
+                )
 
                 metadata = stage2_event.get("metadata", {})
                 knowledge = metadata.get("knowledge", {})
@@ -241,8 +280,16 @@ async def main() -> None:
                     stage3.get("response", "").strip(),
                     "Persisted Chairman response is empty.",
                 )
+                require(
+                    stage3 == emitted_stage3,
+                    "Persisted Stage 3 differs from the Stage 3 emitted "
+                    "by streaming.",
+                )
 
                 print("PASS  assistant response persisted")
+                print(
+                    "PASS  Stage 3 routing metadata survived conversation reload"
+                )
                 print(
                     "PASS  knowledge metadata survived conversation reload"
                 )
