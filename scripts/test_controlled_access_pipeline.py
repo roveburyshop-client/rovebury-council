@@ -571,6 +571,21 @@ async def test_required_missing_provider_degrades_without_fabrication() -> None:
         f"Missing required provider did not degrade: {metadata!r}",
     )
     require(
+        metadata["executed"]
+        is False,
+        f"Unavailable provider was incorrectly marked executed: {metadata!r}",
+    )
+    require(
+        metadata["executed_capabilities"]
+        == [],
+        f"Unavailable provider was incorrectly listed as executed: {metadata!r}",
+    )
+    require(
+        "Provider calls attempted: none"
+        in access_context,
+        f"Missing provider status is misleading: {access_context!r}",
+    )
+    require(
         "No usable live external evidence was obtained."
         in access_context,
         f"Missing provider did not produce anti-fabrication context: {access_context!r}",

@@ -102,7 +102,7 @@ def _build_access_context(
             )
         ),
         (
-            "Executed capabilities: "
+            "Provider calls attempted: "
             + (
                 ", ".join(executed)
                 if executed
@@ -183,6 +183,7 @@ async def collect_external_access(
 
     evidence = []
     failures = []
+    attempted_capabilities = []
 
     if should_execute:
         active_registry = registry
@@ -205,6 +206,15 @@ async def collect_external_access(
                 ]
 
         if not failures:
+            attempted_capabilities = [
+                capability
+                for capability in requested
+                if active_registry.get(
+                    capability
+                )
+                is not None
+            ]
+
             result = await execute_access_plan(
                 plan,
                 user_query,
@@ -229,11 +239,11 @@ async def collect_external_access(
         failures,
     )
 
-    metadata["executed"] = should_execute
-    metadata["executed_capabilities"] = (
-        requested
-        if should_execute
-        else []
+    metadata["executed"] = bool(
+        attempted_capabilities
+    )
+    metadata["executed_capabilities"] = list(
+        attempted_capabilities
     )
 
     evidence_context = (
