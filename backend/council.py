@@ -16,6 +16,10 @@ from .config import (
 )
 from .knowledge import retrieve_knowledge
 from .conversation_context import build_contextual_query
+from .access_runtime import (
+    build_access_augmented_query,
+    collect_external_access,
+)
 from .specialists import (
     build_specialist_instruction,
     plan_specialist_seats,
@@ -660,27 +664,26 @@ async def run_full_council(
     user_query: str,
     conversation_context: str = "",
 ) -> Tuple[List, List, Dict, Dict]:
-    """
-    Run the complete 3-stage council process.
-
-    Args:
-        user_query: The user's question
-
-    Returns:
-        Tuple of (
-            stage1_results,
-            stage2_results,
-            stage3_result,
-            metadata
-        )
-    """
+    # Governed KB retrieval and controlled external access stay independent.
     knowledge_context = get_knowledge_context(
         user_query
     )
 
-    council_query = build_contextual_query(
+    access_context, access_metadata = (
+        await collect_external_access(
+            user_query,
+            conversation_context,
+        )
+    )
+
+    base_council_query = build_contextual_query(
         user_query,
         conversation_context,
+    )
+
+    council_query = build_access_augmented_query(
+        base_council_query,
+        access_context,
     )
 
     stage1_results = await stage1_collect_responses(
@@ -715,6 +718,7 @@ async def run_full_council(
                     "used": bool(conversation_context),
                     "characters": len(conversation_context),
                 },
+                "access": access_metadata,
             }
         )
 
@@ -760,6 +764,7 @@ async def run_full_council(
             "used": bool(conversation_context),
             "characters": len(conversation_context),
         },
+        "access": access_metadata,
     }
 
     return (

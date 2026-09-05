@@ -25,6 +25,10 @@ from .council import (
     get_knowledge_context,
     get_knowledge_sources,
 )
+from .access_runtime import (
+    build_access_augmented_query,
+    collect_external_access,
+)
 
 
 app = FastAPI(title="LLM Council API")
@@ -236,7 +240,7 @@ async def send_message_stream(
         conversation.get("messages", [])
     )
 
-    council_query = build_contextual_query(
+    base_council_query = build_contextual_query(
         request.content,
         conversation_context,
     )
@@ -276,6 +280,18 @@ async def send_message_stream(
                 "used": bool(conversation_context),
                 "characters": len(conversation_context),
             }
+
+            access_context, access_metadata = (
+                await collect_external_access(
+                    request.content,
+                    conversation_context,
+                )
+            )
+
+            council_query = build_access_augmented_query(
+                base_council_query,
+                access_context,
+            )
 
             # Stage 1
             yield (
@@ -333,6 +349,7 @@ async def send_message_stream(
                 "conversation_context": (
                     conversation_context_metadata
                 ),
+                "access": access_metadata,
             }
 
             yield (
