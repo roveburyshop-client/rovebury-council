@@ -3,8 +3,9 @@
 This module connects the deterministic access foundation to explicitly
 registered provider adapters. It does not call any LLM.
 
-Current live provider:
+Current live providers:
 - GitHub read-only provider
+- Wix Stores read-only provider when ``ROVEBURY_WIX_API_KEY`` is configured
 
 Execution policy:
 - ``required`` access is executed.
@@ -18,11 +19,13 @@ in provider requests.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .access import (
     ACCESS_MODE_REQUIRED,
     CAPABILITY_GITHUB,
+    CAPABILITY_WIX,
     AccessProviderRegistry,
     build_external_evidence_context,
     compact_access_metadata,
@@ -30,16 +33,39 @@ from .access import (
     plan_access,
 )
 from .github_access import build_github_read_provider
+from .wix_access import build_wix_read_provider
+
+
+def _wix_api_key_configured() -> bool:
+    """Return whether the backend Wix credential is configured."""
+    return bool(
+        os.getenv(
+            "ROVEBURY_WIX_API_KEY",
+            "",
+        ).strip()
+    )
 
 
 def build_default_access_registry() -> AccessProviderRegistry:
-    """Build the explicitly allowlisted provider registry."""
+    """Build the explicitly allowlisted provider registry.
+
+    GitHub is always available for the configured public repository.
+    Wix is registered only when its backend API key is present. This keeps a
+    missing Wix credential from breaking unrelated providers and allows the
+    normal missing-capability degradation path to handle Wix safely.
+    """
     registry = AccessProviderRegistry()
 
     registry.register(
         CAPABILITY_GITHUB,
         build_github_read_provider(),
     )
+
+    if _wix_api_key_configured():
+        registry.register(
+            CAPABILITY_WIX,
+            build_wix_read_provider(),
+        )
 
     return registry
 
