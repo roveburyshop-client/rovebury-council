@@ -8,6 +8,7 @@ import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
 import MemoryUsed from './MemoryUsed';
+import CouncilObservability from './CouncilObservability';
 import './ChatInterface.css';
 
 
@@ -156,6 +157,18 @@ export default function ChatInterface({
                         finalResponse={message.stage3}
                       />
                     )}
+
+                    {message.stage3
+                      && message.metadata && (
+                        <CouncilObservability
+                          specialists={
+                            message.metadata.specialists
+                          }
+                          access={
+                            message.metadata.access
+                          }
+                        />
+                      )}
 
                     {message.stage3
                       && message.metadata?.knowledge && (
