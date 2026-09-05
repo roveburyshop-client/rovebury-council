@@ -22,6 +22,7 @@ from .access_runtime import (
 )
 from .specialists import (
     build_specialist_instruction,
+    compact_specialist_metadata,
     plan_specialist_seats,
 )
 
@@ -103,6 +104,7 @@ async def stage1_collect_responses(
     *,
     routing_query: Optional[str] = None,
     conversation_context: str = "",
+    specialist_assignments: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: collect one response per dynamically selected specialist seat.
@@ -131,11 +133,16 @@ async def stage1_collect_responses(
             raw_routing_query
         )
 
-    _routing, assignments = plan_specialist_seats(
-        raw_routing_query,
-        COUNCIL_MODELS,
-        conversation_context,
-    )
+    if specialist_assignments is None:
+        _routing, assignments = plan_specialist_seats(
+            raw_routing_query,
+            COUNCIL_MODELS,
+            conversation_context,
+        )
+    else:
+        assignments = list(
+            specialist_assignments
+        )
 
     augmented_query = build_knowledge_augmented_query(
         user_query,
@@ -686,11 +693,29 @@ async def run_full_council(
         access_context,
     )
 
+    specialist_routing, specialist_assignments = (
+        plan_specialist_seats(
+            user_query,
+            COUNCIL_MODELS,
+            conversation_context,
+        )
+    )
+
     stage1_results = await stage1_collect_responses(
         council_query,
         knowledge_context,
         routing_query=user_query,
         conversation_context=conversation_context,
+        specialist_assignments=specialist_assignments,
+    )
+
+    specialist_metadata = compact_specialist_metadata(
+        specialist_routing,
+        specialist_assignments,
+        (
+            result["model"]
+            for result in stage1_results
+        ),
     )
 
     if not stage1_results:
@@ -719,6 +744,7 @@ async def run_full_council(
                     "characters": len(conversation_context),
                 },
                 "access": access_metadata,
+                "specialists": specialist_metadata,
             }
         )
 
@@ -765,6 +791,7 @@ async def run_full_council(
             "characters": len(conversation_context),
         },
         "access": access_metadata,
+        "specialists": specialist_metadata,
     }
 
     return (

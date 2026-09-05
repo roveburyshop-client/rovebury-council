@@ -171,6 +171,7 @@ async def test_nonstream_council_preserves_boundaries_and_metadata() -> None:
         *,
         routing_query=None,
         conversation_context="",
+        specialist_assignments=None,
     ):
         captured["stage1_query"] = user_query
         captured["stage1_knowledge"] = knowledge_context
@@ -394,6 +395,7 @@ async def test_streaming_persists_access_metadata() -> None:
         *,
         routing_query=None,
         conversation_context="",
+        specialist_assignments=None,
     ):
         captured["stage1_query"] = user_query
         captured["stage1_routing_query"] = routing_query

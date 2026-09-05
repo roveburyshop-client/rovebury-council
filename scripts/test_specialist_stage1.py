@@ -204,6 +204,7 @@ async def test_run_full_council_preserves_raw_query_boundaries() -> None:
         *,
         routing_query=None,
         conversation_context="",
+        specialist_assignments=None,
     ):
         captured["stage1_user_query"] = user_query
         captured["stage1_knowledge"] = knowledge_context
@@ -332,6 +333,7 @@ async def test_streaming_preserves_raw_query_boundaries() -> None:
         *,
         routing_query=None,
         conversation_context="",
+        specialist_assignments=None,
     ):
         captured["stage1_user_query"] = user_query
         captured["stage1_knowledge"] = knowledge_context

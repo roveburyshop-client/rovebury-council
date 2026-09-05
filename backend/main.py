@@ -29,6 +29,11 @@ from .access_runtime import (
     build_access_augmented_query,
     collect_external_access,
 )
+from .config import COUNCIL_MODELS
+from .specialists import (
+    compact_specialist_metadata,
+    plan_specialist_seats,
+)
 
 
 app = FastAPI(title="LLM Council API")
@@ -293,6 +298,14 @@ async def send_message_stream(
                 access_context,
             )
 
+            specialist_routing, specialist_assignments = (
+                plan_specialist_seats(
+                    request.content,
+                    COUNCIL_MODELS,
+                    conversation_context,
+                )
+            )
+
             # Stage 1
             yield (
                 f"data: {json.dumps({'type': 'stage1_start'})}"
@@ -304,6 +317,16 @@ async def send_message_stream(
                 knowledge_context,
                 routing_query=request.content,
                 conversation_context=conversation_context,
+                specialist_assignments=specialist_assignments,
+            )
+
+            specialist_metadata = compact_specialist_metadata(
+                specialist_routing,
+                specialist_assignments,
+                (
+                    result["model"]
+                    for result in stage1_results
+                ),
             )
 
             yield (
@@ -350,6 +373,7 @@ async def send_message_stream(
                     conversation_context_metadata
                 ),
                 "access": access_metadata,
+                "specialists": specialist_metadata,
             }
 
             yield (
